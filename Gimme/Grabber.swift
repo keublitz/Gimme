@@ -64,7 +64,12 @@ class Grabber {
     var audioFormat: AudioFormat { settings.audioFormat }
     var hdr: Bool { settings.hdr }
     
-    var test = 3
+    private var conversionStartTime: Date?
+    private var conversionTimer: Timer?
+    private var outputFilePath: String?
+    private var lastFileSize: Int64 = 0
+    private var fileSizeGrowthRate: Double = 0 // bytes per sec.
+    private var estimatedFinalSize: Int64 = 0
     
 //    private func find_ffmpeg() -> String ? {
 //        let possiblePaths = [
@@ -208,8 +213,17 @@ class Grabber {
                             }
                         }
                         
-                        if lineStr.contains("[Merger]") || lineStr.contains("[VideoConvertor]") {
-                            self.status = "Converting video, this may take several minutes"
+                        if lineStr.contains("[VideoConvertor]") {
+                            if let destinationRange = lineStr.range(of: "Destination: (.+)$", options: .regularExpression) {
+                                self.outputFilePath = String(lineStr[destinationRange])
+                                    .replacingOccurrences(of: "Destination: ", with: "")
+                            }
+                            
+                            DispatchQueue.main.async {
+                                self.conversionStartTime = Date()
+                                self.status = "Converting video..."
+                                self.startMonitoringConversion()
+                            }
                         }
                         
                         DispatchQueue.main.async {
@@ -248,9 +262,22 @@ class Grabber {
                         self.status = "Failed"
                         Debugger.log("Download failed", type: .error)
                     }
+                    self.invalidateTimer()
+                    self.estimatedFinalSize = 0
+                    self.lastFileSize = 0
+                    self.fileSizeGrowthRate = 0
+                    self.outputFilePath = nil
+                    self.conversionStartTime = nil
                 }
             } catch {
                 DispatchQueue.main.async {
+                    self.invalidateTimer()
+                    self.estimatedFinalSize = 0
+                    self.lastFileSize = 0
+                    self.fileSizeGrowthRate = 0
+                    self.outputFilePath = nil
+                    self.conversionStartTime = nil
+                    
                     self.isDownloading = false
                     self.status = "Error"
                     Debugger.catch(error)
@@ -264,42 +291,122 @@ class Grabber {
     private func parseProgress(ofType filetype: FileType, from line: String) {
         let pattern = #"([0-9.]+)%.*?of\s+([0-9.]+[A-Za-z]+).*?at\s+([0-9.]+[A-Za-z/s]+).*?ETA\s+([0-9:]+)"#
         
-        let total: Double = filetype == .video ? 2 : 1
-        
-        if line.contains("[download] Destination") {
-            destinationsTouched += 1
-        }
-        
         if let regex = try? NSRegularExpression(pattern: pattern),
            let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) {
             if let percentRange = Range(match.range(at: 1), in: line),
                let percent = Double(line[percentRange]) {
                 DispatchQueue.main.async {
-                    let pct = percent / total
-                    let postPct = percent <= 50 && self.destinationsTouched < 2 ? pct : pct + 50
-                    
                     self.progress = percent / 100
 //                    self.status = "\(Int(postPct))%"
+                }
+            }
+            
+            if let sizeRange = Range(match.range(at: 2), in: line) {
+                let str = String(line[sizeRange])
+                if let bytes = self.parseSize(str) {
+                    if estimatedFinalSize == 0 {
+                        self.estimatedFinalSize = bytes
+                    }
+                    
+                    DispatchQueue.main.async {
+                        let mb = Double(self.estimatedFinalSize) / 1_048_576
+                        Debugger.log("Total download size: \(String(format: "%.2f", mb))", type: .debug)
+                    }
                 }
             }
         }
     }
     
-    private func parseProgress(from line: String) {
-        let components = line.split(separator: " ")
+    private func parseSize(_ str: String) -> Int64? {
+        let pattern = #"([0-9.]+)([A-Za-z]+)"#
         
-        for component in components {
-            if component.hasSuffix("%") { // takes just the percentage
-                let percentStr = component.dropLast() // removes %
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: str, range: NSRange(str.startIndex..., in: str)),
+              let numberRange = Range(match.range(at: 1), in: str),
+              let unitRange = Range(match.range(at: 2), in: str),
+              let number = Double(str[numberRange]) else {
+            return nil
+        }
+        
+        Debugger.log("====== PARSE SIZE OPERATIONS =======", simple: true)
+        Debugger.log("regex: \(regex)", simple: true)
+        Debugger.log("match: \(match)", simple: true)
+        Debugger.log("numberRange: \(numberRange)", simple: true)
+        Debugger.log("unitRange: \(unitRange)", simple: true)
+        Debugger.log("number: \(number)", simple: true)
+        
+        let unit = String(str[unitRange]).uppercased()
+        
+        Debugger.log("unit: \(unit)", simple: true)
+        
+        let multiplier: Double
+        switch unit {
+        case "B", "BYTES": multiplier = 1
+        case "KB", "KIB": multiplier = 1_024
+        case "MB", "MIB": multiplier = 1_024 * 1_024
+        case "GB", "GIB": multiplier = 1_073_741_824
+        case "TB", "TIB": multiplier = 1_099_511_627_776
+        default: return nil
+        }
+        
+        Debugger.log("FINAL RESULT: \(number * multiplier)", simple: true)
+        Debugger.log("==> which should end up as \((number * multiplier) / 1_048_576)")
+        
+        return Int64(number * multiplier)
+    }
+    
+    private func startMonitoringConversion() {
+        conversionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.updateConversionProgress()
+        }
+    }
+    
+    private func invalidateTimer() {
+        conversionTimer?.invalidate()
+        conversionTimer = nil
+        Debugger.log("timers are gone: \(conversionTimer == nil)")
+    }
+    
+    private func updateConversionProgress() {
+        guard let path = outputFilePath,
+              let startTime = conversionStartTime else { return }
+        
+        let expandedPath = (path as NSString).expandingTildeInPath
+        
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath),
+           let fileSize = attrs[.size] as? Int64 {
+            
+            let elapsed = -startTime.timeIntervalSinceNow
+            
+            if lastFileSize > 0 {
+                let sizeDelta = fileSize - lastFileSize
+                fileSizeGrowthRate = Double(sizeDelta)
                 
-                if let percent = Double(percentStr) {
-                    DispatchQueue.main.async {
-                        self.progress = percent / 100
-//                        self.status = "\(Int(percent))%"
-                    }
+                // very crude estimate assuming final is 1.5x source
+                let targetSize = estimatedFinalSize > 0 ? estimatedFinalSize : fileSize * 2
+                
+                Debugger.log("targetSize = \(targetSize / 1_048_576)MB, estimatedFinalSize = \(estimatedFinalSize)", type: .debug)
+                
+                let progress = min(Double(fileSize) / Double(targetSize), 0.99)
+                
+                if fileSizeGrowthRate > 0 {
+                    let remainingBytes = targetSize - fileSize
+                    let estimatedSecondsRemaining = Int(Double(remainingBytes) / fileSizeGrowthRate)
+                    
+                    let mins = estimatedSecondsRemaining / 60
+                    let secs = estimatedSecondsRemaining % 60
+                    
+                    let progressPercent = Int(progress * 100)
+                    self.status = "Converting... \(progressPercent)% | ~\(mins)m \(secs)s remaining)"
+                } else {
+                    let mbSize = Double(fileSize) / 1_048_576
+                    self.status = "Converting... \(String(format: "%.1f", mbSize))MB"
                 }
-                break
+            } else {
+                self.status = "Converting..."
             }
+            
+            lastFileSize = fileSize
         }
     }
 }
