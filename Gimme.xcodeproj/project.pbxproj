@@ -8,11 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		D3781CF62F0DFF1300243E0C /* README.md in Sources */ = {isa = PBXBuildFile; fileRef = D3781CF52F0DFF1000243E0C /* README.md */; };
+		D3781D0B2F0E043C00243E0C /* LICENSE.md in Sources */ = {isa = PBXBuildFile; fileRef = D3781D0A2F0E043700243E0C /* LICENSE.md */; };
 		D38B21732F0B3F2400DDF70B /* Repellent in Frameworks */ = {isa = PBXBuildFile; productRef = D38B21722F0B3F2400DDF70B /* Repellent */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		D3781CF52F0DFF1000243E0C /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		D3781D0A2F0E043700243E0C /* LICENSE.md */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LICENSE.md; sourceTree = "<group>"; };
 		D3EB81AF2F060CB60046267E /* Gimme.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Gimme.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -40,6 +42,7 @@
 			isa = PBXGroup;
 			children = (
 				D3781CF52F0DFF1000243E0C /* README.md */,
+				D3781D0A2F0E043700243E0C /* LICENSE.md */,
 				D3EB81B12F060CB60046267E /* Gimme */,
 				D3EB81B02F060CB60046267E /* Products */,
 			);
@@ -132,6 +135,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D3781CF62F0DFF1300243E0C /* README.md in Sources */,
+				D3781D0B2F0E043C00243E0C /* LICENSE.md in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
