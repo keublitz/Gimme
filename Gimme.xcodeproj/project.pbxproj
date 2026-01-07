@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		D3781CF62F0DFF1300243E0C /* README.md in Sources */ = {isa = PBXBuildFile; fileRef = D3781CF52F0DFF1000243E0C /* README.md */; };
-		D3781D0B2F0E043C00243E0C /* LICENSE.md in Sources */ = {isa = PBXBuildFile; fileRef = D3781D0A2F0E043700243E0C /* LICENSE.md */; };
 		D38B21732F0B3F2400DDF70B /* Repellent in Frameworks */ = {isa = PBXBuildFile; productRef = D38B21722F0B3F2400DDF70B /* Repellent */; };
 /* End PBXBuildFile section */
 
@@ -135,7 +134,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				D3781CF62F0DFF1300243E0C /* README.md in Sources */,
-				D3781D0B2F0E043C00243E0C /* LICENSE.md in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
