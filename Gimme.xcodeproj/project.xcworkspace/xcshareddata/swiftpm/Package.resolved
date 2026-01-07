@@ -1,0 +1,15 @@
+{
+  "originHash" : "470608460b2449f618ff16b10f1926f263dc3af299618b63e5b0eae844c6f6e0",
+  "pins" : [
+    {
+      "identity" : "repellent",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/keublitz/Repellent",
+      "state" : {
+        "revision" : "5454c3fe81ce852a743e8b52d6c5359b3a2d0073",
+        "version" : "1.2.0"
+      }
+    }
+  ],
+  "version" : 3
+}

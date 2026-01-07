@@ -1,0 +1,9 @@
+ffmpeg
+ffprobe
+yt-dlp
+deno
+.DS_Store
+*.xcuserstate
+xcuserdata/
+*.xcuserdatad
+DerivedData/
