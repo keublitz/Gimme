@@ -92,7 +92,7 @@ class Grabber {
     
     private var resStr: String {
         switch resolution {
-        case .uhd4k: return "2140"
+        case .uhd4k: return "2160"
         case .uhd: return "1440"
         case .fhd: return "1080"
         case .hd: return "720"
