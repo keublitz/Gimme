@@ -34,7 +34,11 @@ struct ContentView: View {
             ProgressView(value: clamp(grabber.progress)) {
                 EmptyView()
             } currentValueLabel: {
-                Text(grabber.status)
+                if !grabber.statusContext.isEmpty {
+                    Text(grabber.statusContext)
+                } else {
+                    Text(grabber.status)
+                }
             }
             .progressViewStyle(.linear)
             .frame(width: 300)

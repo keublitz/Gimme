@@ -57,6 +57,7 @@ class Grabber {
     
     var progress: Double = 0.0
     var status: String = ""
+    var statusContext: String = ""
     var isDownloading: Bool = false
     
     var resolution: Resolution { settings.resolution }
@@ -64,7 +65,6 @@ class Grabber {
     var audioFormat: AudioFormat { settings.audioFormat }
     var hdr: Bool { settings.hdr }
     
-    private var conversionStartTime: Date?
     private var conversionTimer: Timer?
     private var outputFilePath: String?
     private var lastFileSize: Int64 = 0
@@ -152,6 +152,9 @@ class Grabber {
         ]
     }
     
+    private var videoDownloadInProgress: Bool = false
+    private var audioDownloadInProgress: Bool = false
+    
     func download(url: String, filetype: FileType = .video) {
         DispatchQueue.main.async {
             self.isDownloading = true
@@ -205,23 +208,46 @@ class Grabber {
                                 
                                 self.status = "Ready to start in about \(sleep) seconds..."
                             } else {
-                                if lineStr.starts(with: "[download] 100") {
-                                    self.status = "Finishing up..."
+                                for ext in VideoFormat.allCases {
+                                    if lineStr.hasSuffix(ext.rawValue) {
+                                        self.videoDownloadInProgress = true
+                                        self.audioDownloadInProgress = false
+                                    }
+                                }
+                                
+                                for ext in AudioFormat.allCases {
+                                    if lineStr.hasSuffix(ext.rawValue) {
+                                        self.audioDownloadInProgress = true
+                                        self.videoDownloadInProgress = false
+                                    }
+                                }
+                                
+                                var currentTypeDownloading: String? {
+                                    if self.videoDownloadInProgress {
+                                        return "video"
+                                    } else if self.audioDownloadInProgress {
+                                        return "audio"
+                                    } else {
+                                        return nil
+                                    }
+                                }
+                                
+                                if let current = currentTypeDownloading {
+                                    self.status = "Downloading \(current)... \(String(lineStr.trimmingPrefix("[download] ")))"
                                 } else {
-                                    self.status = String(lineStr.trimmingPrefix("[download] "))
+                                    self.status = "Downloading... " + String(lineStr.trimmingPrefix("[download] "))
                                 }
                             }
                         }
                         
-                        if lineStr.contains("[VideoConvertor]") {
+                        if lineStr.contains("[VideoConvertor]") || lineStr.contains("[VideoRemuxer]") {
                             if let destinationRange = lineStr.range(of: "Destination: (.+)$", options: .regularExpression) {
                                 self.outputFilePath = String(lineStr[destinationRange])
                                     .replacingOccurrences(of: "Destination: ", with: "")
                             }
                             
                             DispatchQueue.main.async {
-                                self.conversionStartTime = Date()
-                                self.status = "Converting video..."
+                                self.status = "Encoding video..."
                                 self.startMonitoringConversion()
                             }
                         }
@@ -239,6 +265,12 @@ class Grabber {
                     error.split(separator: "\n").forEach { line in
                         DispatchQueue.main.async {
                             Debugger.log(String(line), type: .error)
+                        }
+                        
+                        let str = String(line)
+                        
+                        if str.contains("Sign in to confirm you’re not a bot.") {
+                            self.statusContext = "YouTube is temporarily blocking automatic downloads. Please try again later."
                         }
                     }
                 }
@@ -266,8 +298,10 @@ class Grabber {
                     self.estimatedFinalSize = 0
                     self.lastFileSize = 0
                     self.fileSizeGrowthRate = 0
+                    self.fileSizeDeltas = []
                     self.outputFilePath = nil
-                    self.conversionStartTime = nil
+                    self.videoDownloadInProgress = false
+                    self.audioDownloadInProgress = false
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -275,8 +309,10 @@ class Grabber {
                     self.estimatedFinalSize = 0
                     self.lastFileSize = 0
                     self.fileSizeGrowthRate = 0
+                    self.fileSizeDeltas = []
                     self.outputFilePath = nil
-                    self.conversionStartTime = nil
+                    self.videoDownloadInProgress = false
+                    self.audioDownloadInProgress = false
                     
                     self.isDownloading = false
                     self.status = "Error"
@@ -328,16 +364,7 @@ class Grabber {
             return nil
         }
         
-        Debugger.log("====== PARSE SIZE OPERATIONS =======", simple: true)
-        Debugger.log("regex: \(regex)", simple: true)
-        Debugger.log("match: \(match)", simple: true)
-        Debugger.log("numberRange: \(numberRange)", simple: true)
-        Debugger.log("unitRange: \(unitRange)", simple: true)
-        Debugger.log("number: \(number)", simple: true)
-        
         let unit = String(str[unitRange]).uppercased()
-        
-        Debugger.log("unit: \(unit)", simple: true)
         
         let multiplier: Double
         switch unit {
@@ -348,9 +375,6 @@ class Grabber {
         case "TB", "TIB": multiplier = 1_099_511_627_776
         default: return nil
         }
-        
-        Debugger.log("FINAL RESULT: \(number * multiplier)", simple: true)
-        Debugger.log("==> which should end up as \((number * multiplier) / 1_048_576)")
         
         return Int64(number * multiplier)
     }
@@ -367,25 +391,37 @@ class Grabber {
         Debugger.log("timers are gone: \(conversionTimer == nil)")
     }
     
+    private var fileSizeDeltas: [Double] = []
+    
     private func updateConversionProgress() {
-        guard let path = outputFilePath,
-              let startTime = conversionStartTime else { return }
+        guard let path = outputFilePath else { return }
         
         let expandedPath = (path as NSString).expandingTildeInPath
         
         if let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath),
            let fileSize = attrs[.size] as? Int64 {
             
-            let elapsed = -startTime.timeIntervalSinceNow
-            
             if lastFileSize > 0 {
                 let sizeDelta = fileSize - lastFileSize
-                fileSizeGrowthRate = Double(sizeDelta)
                 
-                // very crude estimate assuming final is 1.5x source
-                let targetSize = estimatedFinalSize > 0 ? estimatedFinalSize : fileSize * 2
+                fileSizeDeltas.append(Double(sizeDelta))
                 
-                Debugger.log("targetSize = \(targetSize / 1_048_576)MB, estimatedFinalSize = \(estimatedFinalSize)", type: .debug)
+                if fileSizeDeltas.count > 25 {
+                    fileSizeDeltas.removeFirst()
+                }
+                
+                let avgDelta = fileSizeDeltas.reduce(0, +) / Double(fileSizeDeltas.count)
+                fileSizeGrowthRate = avgDelta
+                
+                var diff: Double {
+                    hdr ? 0.65 : 1.33333
+                }
+                
+                let targetSize = estimatedFinalSize > 0 ? Int64(Double(estimatedFinalSize) * diff) : fileSize * 2
+                
+                Debugger.log("targetSize = \(targetSize), formatted = \(targetSize / 1_048_576)MB, estimatedFinalSize = \(estimatedFinalSize)", simple: true)
+                Debugger.log("estimatedFinalSize * diff (\(diff)) = \(Double(estimatedFinalSize) * diff)", simple: true)
+                Debugger.log("filesize * 2 = \(fileSize * 2)", simple: true)
                 
                 let progress = min(Double(fileSize) / Double(targetSize), 0.99)
                 
@@ -396,14 +432,31 @@ class Grabber {
                     let mins = estimatedSecondsRemaining / 60
                     let secs = estimatedSecondsRemaining % 60
                     
+                    var remaining: String {
+                        if mins == 0 {
+                            return "\(secs)s remaining"
+                        } else {
+                            return "\(mins)m \(secs)s remaining"
+                        }
+                    }
+                    
                     let progressPercent = Int(progress * 100)
-                    self.status = "Converting... \(progressPercent)% | ~\(mins)m \(secs)s remaining)"
+                    self.progress = Double(progress)
+                    
+                    if fileSizeDeltas.count <= 10 {
+                        self.status = "Encoding... \(progressPercent)% | Estimating time remaining..."
+                    } else if secs >= 0 {
+                        self.status = "Encoding... \(progressPercent)% | \(remaining)"
+                    } else {
+                        let mbSize = Double(fileSize) / 1_048_576
+                        self.status = "Encoding... \(progressPercent)% | Almost ready... (\(String(format: "%.1f", mbSize))MB)"
+                    }
                 } else {
                     let mbSize = Double(fileSize) / 1_048_576
-                    self.status = "Converting... \(String(format: "%.1f", mbSize))MB"
+                    self.status = "Encoding... \(String(format: "%.1f", mbSize))MB"
                 }
             } else {
-                self.status = "Converting..."
+                self.status = "Encoding..."
             }
             
             lastFileSize = fileSize
