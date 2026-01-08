@@ -100,28 +100,49 @@ class Grabber {
         }
     }
     
-    private func getBestMP4(of url: String) -> [String] {
-        let height = "[height<=\(resStr)]"
-        let hdrStr = hdr ? "[dynamic_range^=HDR]" : "[dynamic_range^=SDR]"
-        let vcodec = hdr ? "[vcodec!^=av01]" : "[vcodec^=avc1]"
+    private var hdrStr: String { hdr ? "[dynamic_range^=HDR]" : "[dynamic_range^=SDR]" }
+    
+    private var bestAVC1Encoding: String { "bv*[height<=\(resStr)][vcodec^=avc1]+ba" }
+    private var bestAnyEncodingPreferredHDR: String { "bv*[height<=\(resStr)]\(hdrStr)+ba" }
+    private var bestAnyEncodingAnyHDR: String { "bv*[height<=\(resStr)]+ba"}
+    private var fallback: String = "bv*+ba/b"
+    
+    private var recode: [String] { ["--recode-video", "\(videoFormat.rawValue)"] }
+    private var remux: [String] { ["--remux-video", "\(videoFormat.rawValue)"] }
+    
+    private func encodeInstructions(defaultTo: String = "bv*+ba/b") -> String {
+        var inst: [String] = []
         
-        return [
-            "-f", "bv\(height)\(vcodec)\(hdrStr)+ba/b\(height)\(vcodec)/b\(height)[vcodec^=avc1]/b\(height)[vcodec!^=av01]/b\(height)/w",
-            "--recode-video", "mp4",
-            "-o", "~/Downloads/%(title)s.%(ext)s",
-            "--newline",
-            url
-        ]
+        switch videoFormat {
+        case .mp4:
+            if hdr {
+                inst = [
+                    bestAnyEncodingPreferredHDR,
+                    bestAnyEncodingAnyHDR,
+                    fallback
+                ] + recode
+            } else {
+                inst = [
+                    bestAVC1Encoding,
+                    bestAnyEncodingAnyHDR,
+                    fallback
+                ] + remux
+            }
+        default: inst = [defaultTo, "--recode-video", "\(videoFormat.rawValue)"]
+        }
+        
+        return inst.joined(separator: "/")
     }
     
     private func getVideo(of url: String) -> [String] {
-        let height = "[height<=\(resStr)]"
-        let hdrStr = hdr ? "[dynamic_range^=HDR]" : "[dynamic_range^=SDR]"
-        let codec = "[vcodec!^=av01]"
+        let bestAnyEncodingWithHDRpreference = "bv*[height<=\(resStr)]\(hdrStr)+ba/"
+        let bestAnyEncodingAnyHDR = "bv*[height<=\(resStr)]+ba/"
+        let best = "bv*+ba/b"
+        
+        let fallback = bestAnyEncodingWithHDRpreference + bestAnyEncodingAnyHDR + best
         
         return [
-            "-f", "bv\(height)\(hdrStr)\(codec)+ba/b\(height)\(hdrStr)\(codec)/b\(height)\(codec)/w",
-            "--recode-video", "\(videoFormat.rawValue)",
+            "-f", encodeInstructions(defaultTo: fallback),
             "-o", "~/Downloads/%(title)s.%(ext)s",
             "--newline",
             url
@@ -171,11 +192,7 @@ class Grabber {
             var exporter: [String] {
                 switch filetype {
                 case .audio: return self.getAudio(of: url)
-                case .video:
-                    if self.videoFormat == .mp4 {
-                        return self.getBestMP4(of: url)
-                    }
-                    return self.getVideo(of: url)
+                case .video: return self.getVideo(of: url)
                 }
             }
             
