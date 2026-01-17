@@ -289,6 +289,10 @@ class Grabber {
                         if str.contains("Sign in to confirm you’re not a bot.") {
                             self.statusContext = "YouTube is temporarily blocking automatic downloads. Please try again later."
                         }
+                        
+                        if str.contains("Requested format is not available.") {
+                            self.statusContext = "This video does not support downloads in the chosen format."
+                        }
                     }
                 }
             }
