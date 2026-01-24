@@ -81,7 +81,7 @@ class Grabber {
         guard let ytdlp = Bundle.main.path(forResource: "yt-dlp", ofType: nil),
               let ffmpeg = Bundle.main.path(forResource: "ffmpeg", ofType: nil) else {
 //              let ffprobe = Bundle.main.path(forResource: "ffprobe", ofType: nil) else {
-            Debugger.fatalError("one or more bundles could not be found")
+            console.fatalError("one or more bundles could not be found")
         }
         
         self.yt_dlp = ytdlp
@@ -120,15 +120,15 @@ class Grabber {
                     bestAnyEncodingPreferredHDR,
                     bestAnyEncodingAnyHDR,
                     fallback
-                ] + recode
+                ]
             } else {
                 inst = [
                     bestAVC1Encoding,
                     bestAnyEncodingAnyHDR,
                     fallback
-                ] + remux
+                ]
             }
-        default: inst = [defaultTo, "--recode-video", "\(videoFormat.rawValue)"]
+        default: inst = [defaultTo]
         }
         
         return inst.joined(separator: "/")
@@ -144,6 +144,7 @@ class Grabber {
         return [
             "-f", encodeInstructions(defaultTo: fallback),
             "-o", "~/Downloads/%(title)s.%(ext)s",
+            "--recode-video", "\(videoFormat.rawValue)",
             "--newline",
             url
         ]
@@ -184,7 +185,7 @@ class Grabber {
         }
         
         DispatchQueue.global(qos: .userInitiated).async {
-            Debugger.log("download initiated (in global thread)", type: .debug)
+            console.log("download initiated (in global thread)", type: .debug)
             
             let task = Process()
             task.executableURL = URL(filePath: self.yt_dlp)
@@ -270,7 +271,7 @@ class Grabber {
                         }
                         
                         DispatchQueue.main.async {
-                            Debugger.log(lineStr, simple: true)
+                            console.log(lineStr, simple: true)
                         }
                     }
                 }
@@ -281,7 +282,7 @@ class Grabber {
                 if let error = String(data: data, encoding: .utf8) {
                     error.split(separator: "\n").forEach { line in
                         DispatchQueue.main.async {
-                            Debugger.log(String(line), type: .error)
+                            console.log(String(line), type: .error)
                         }
                         
                         let str = String(line)
@@ -310,10 +311,10 @@ class Grabber {
                     if task.terminationStatus == 0 {
                         self.progress = 1.0
                         self.status = "Complete!"
-                        Debugger.log("Download successful!", type: .success)
+                        console.log("Download successful!", type: .success)
                     } else {
                         self.status = "Failed"
-                        Debugger.log("Download failed", type: .error)
+                        console.log("Download failed", type: .error)
                     }
                     self.invalidateTimer()
                     self.estimatedFinalSize = 0
@@ -337,7 +338,7 @@ class Grabber {
                     
                     self.isDownloading = false
                     self.status = "Error"
-                    Debugger.catch(error)
+                    console.catch(error)
                 }
             }
         }
@@ -367,7 +368,7 @@ class Grabber {
                     
                     DispatchQueue.main.async {
                         let mb = Double(self.estimatedFinalSize) / 1_048_576
-                        Debugger.log("Total download size: \(String(format: "%.2f", mb))", type: .debug)
+                        console.log("Total download size: \(String(format: "%.2f", mb))", type: .debug)
                     }
                 }
             }
@@ -409,7 +410,7 @@ class Grabber {
     private func invalidateTimer() {
         conversionTimer?.invalidate()
         conversionTimer = nil
-        Debugger.log("timers are gone: \(conversionTimer == nil)")
+        console.log("timers are gone: \(conversionTimer == nil)")
     }
     
     private var fileSizeDeltas: [Double] = []
@@ -440,9 +441,9 @@ class Grabber {
                 
                 let targetSize = estimatedFinalSize > 0 ? Int64(Double(estimatedFinalSize) * diff) : fileSize * 2
                 
-                Debugger.log("targetSize = \(targetSize), formatted = \(targetSize / 1_048_576)MB, estimatedFinalSize = \(estimatedFinalSize)", simple: true)
-                Debugger.log("estimatedFinalSize * diff (\(diff)) = \(Double(estimatedFinalSize) * diff)", simple: true)
-                Debugger.log("filesize * 2 = \(fileSize * 2)", simple: true)
+                console.log("targetSize = \(targetSize), formatted = \(targetSize / 1_048_576)MB, estimatedFinalSize = \(estimatedFinalSize)", simple: true)
+                console.log("estimatedFinalSize * diff (\(diff)) = \(Double(estimatedFinalSize) * diff)", simple: true)
+                console.log("filesize * 2 = \(fileSize * 2)", simple: true)
                 
                 let progress = min(Double(fileSize) / Double(targetSize), 0.99)
                 
