@@ -61,7 +61,7 @@ struct BundleInstaller {
         }
         
         console.log("beginning update in global thread", type: .debug)
-        progress.wrappedValue = "Updating yt-dlp package..."
+        progress.wrappedValue = "Checking for yt-dlp updates..."
         
         guard let path = resolvedYTDLPPath() else { return }
         

@@ -71,7 +71,7 @@ struct ContentView: View {
             }
         }
         .task {
-            message = "Checking for packages..."
+            message = "Checking packages..."
             await grabber.recheckBinaries()
             
             if !grabber.binaryReady {
