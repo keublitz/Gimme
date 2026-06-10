@@ -53,7 +53,7 @@ struct FFmpegInstaller {
         
         Grabber.shared.ffmpeg = installedPath.path
         
-        progress.wrappedValue = "Download complete!"
+        progress.wrappedValue = "ffmpeg download complete!"
         return installedPath.path
     }
     

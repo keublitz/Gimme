@@ -30,12 +30,14 @@ struct BundleInstaller {
         return url
     }
     
-    static func download() async throws -> String {
+    static func download(_ progress: Binding<String>) async throws -> String {
         console.log("Fetching link for download...")
+        progress.wrappedValue = "Fetching yt-dlp download..."
         let downloadURL = try await fetchDownloadURL()
         let destURL = appBinDir.appendingPathComponent("yt-dlp")
         
         console.log("Downloading yt-dlp bundle...")
+        progress.wrappedValue = "Downloading yt-dlp..."
         let (tempURL, _) = try await URLSession.shared.download(from: downloadURL)
         try FileManager.default.moveItem(at: tempURL, to: destURL)
         
@@ -48,13 +50,13 @@ struct BundleInstaller {
         
         Grabber.shared.yt_dlp = destURL.path
         
-        console.log("Download complete!")
+        console.log("yt-dlp download complete!")
         return destURL.path
     }
     
     static func update(_ progress: Binding<String>) async throws {
         guard await resolveYtDlp() else {
-            try await download()
+            try await download(progress)
             return
         }
         
