@@ -9,7 +9,7 @@ class UserSettings: ObservableObject {
     
     @AppStorage("downloadFolder") var downloadFolder: String = NSHomeDirectory() + "/Downloads"
     @AppStorage("resolution") var resolution: Resolution = .fhd
-    @AppStorage("videoFormat") var videoFormat: VideoFormat = .mp4
+    @AppStorage("videoFormat") var videoFormat: VideoFormatExtension = .mp4
     @AppStorage("audioFormat") var audioFormat: AudioFormat = .mp3
     @AppStorage("hdr") var hdr: Bool = false
     

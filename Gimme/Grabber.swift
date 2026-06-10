@@ -21,7 +21,7 @@ enum Resolution: String, CaseIterable, Identifiable, Codable {
     var id: String { self.rawValue }
 }
 
-enum VideoFormat: String, CaseIterable, Identifiable, Codable {
+enum VideoFormatExtension: String, CaseIterable, Identifiable, Codable {
     case avi
     case flv
     case mkv
@@ -50,8 +50,14 @@ class Grabber {
     static let shared = Grabber()
     let settings = UserSettings.shared
     
-    let yt_dlp: String
-    let ffmpeg: String
+    var binaryReady: Bool = false
+    
+    func recheckBinaries() async {
+        binaryReady = await resolveYtDlp()
+    }
+    
+    var yt_dlp: String
+    var ffmpeg: String
 //    let ffprobe: String
 //    let deno: String
     
@@ -61,7 +67,7 @@ class Grabber {
     var isDownloading: Bool = false
     
     var resolution: Resolution { settings.resolution }
-    var videoFormat: VideoFormat { settings.videoFormat }
+    var videoFormat: VideoFormatExtension { settings.videoFormat }
     var audioFormat: AudioFormat { settings.audioFormat }
     var hdr: Bool { settings.hdr }
     
@@ -70,6 +76,7 @@ class Grabber {
     private var lastFileSize: Int64 = 0
     private var fileSizeGrowthRate: Double = 0 // bytes per sec.
     private var estimatedFinalSize: Int64 = 0
+    private var ext: String?
     
 //    private func find_ffmpeg() -> String ? {
 //        let possiblePaths = [
@@ -80,8 +87,10 @@ class Grabber {
     init() {
         guard let ytdlp = Bundle.main.path(forResource: "yt-dlp", ofType: nil),
               let ffmpeg = Bundle.main.path(forResource: "ffmpeg", ofType: nil) else {
-//              let ffprobe = Bundle.main.path(forResource: "ffprobe", ofType: nil) else {
-            console.fatalError("one or more bundles could not be found")
+            console.log("One or more bundles could not be found, may need to be manually installed", type: .warning)
+            self.yt_dlp = String()
+            self.ffmpeg = String()
+            return
         }
         
         self.yt_dlp = ytdlp
@@ -103,38 +112,54 @@ class Grabber {
     private var hdrStr: String { hdr ? "[dynamic_range^=HDR]" : "[dynamic_range^=SDR]" }
     
     private var bestAVC1Encoding: String { "bv*[height<=\(resStr)][vcodec^=avc1]+ba" }
-    private var bestAnyEncodingPreferredHDR: String { "bv*[height<=\(resStr)]\(hdrStr)+ba" }
-    private var bestAnyEncodingAnyHDR: String { "bv*[height<=\(resStr)]+ba"}
-    private var fallback: String = "bv*+ba/b"
+    private var bestAnyEncodingHDR: String { "bv*[height<=\(resStr)][dynamic_range^=HDR]+ba" }
+    private var bestAnyEncodingAnyHDR: String { "bv*[height<=\(resStr)]+ba" }
+    private var bestAnyEncodingSDR: String { "bv*[height<=\(resStr)][dynamic_range^=SDR]+ba" }
     
     private var recode: [String] { ["--recode-video", "\(videoFormat.rawValue)"] }
     private var remux: [String] { ["--remux-video", "\(videoFormat.rawValue)"] }
     
-    private func encodeInstructions(defaultTo: String = "bv*+ba/b") -> String {
+    private func encodeInstructions(defaultTo fallback: String = "bv*+ba/b", ext: String? = nil) -> String {
         var inst: [String] = []
+        
+        var avc1EncodingIfNeeded: String {
+            if let ext, ext == "mp4" {
+                return bestAVC1Encoding
+            }
+            else {
+                return bestAnyEncodingSDR
+            }
+        }
         
         switch videoFormat {
         case .mp4:
             if hdr {
                 inst = [
-                    bestAnyEncodingPreferredHDR,
+                    bestAnyEncodingHDR,
                     bestAnyEncodingAnyHDR,
                     fallback
                 ]
             } else {
                 inst = [
-                    bestAVC1Encoding,
-                    bestAnyEncodingAnyHDR,
+                    avc1EncodingIfNeeded,
+                    bestAnyEncodingSDR,
                     fallback
                 ]
             }
-        default: inst = [defaultTo]
+        default: inst = [fallback]
         }
         
         return inst.joined(separator: "/")
     }
     
-    private func getVideo(of url: String) -> [String] {
+    private func getVideo(of url: String, ext: String? = nil, recode: Bool = true) -> [String] {
+        var recodeRemux: String {
+            switch recode {
+            case true: return "--recode-video"
+            case false: return "--remux-video"
+            }
+        }
+        
         let bestAnyEncodingWithHDRpreference = "bv*[height<=\(resStr)]\(hdrStr)+ba/"
         let bestAnyEncodingAnyHDR = "bv*[height<=\(resStr)]+ba/"
         let best = "bv*+ba/b"
@@ -142,10 +167,19 @@ class Grabber {
         let fallback = bestAnyEncodingWithHDRpreference + bestAnyEncodingAnyHDR + best
         
         return [
-            "-f", encodeInstructions(defaultTo: fallback),
+            "-f", encodeInstructions(defaultTo: fallback, ext: ext),
             "-o", "~/Downloads/%(title)s.%(ext)s",
-            "--recode-video", "\(videoFormat.rawValue)",
+            recodeRemux, "\(videoFormat.rawValue)",
             "--newline",
+            "--postprocessor-args", "ffmpeg:-progress pipe:1",
+            url
+        ]
+    }
+    
+    private func createJSON(of url: String) -> [String] {
+        return [
+            "--print", VideoMetadata.jsonScript,
+            "-f", encodeInstructions(),
             url
         ]
     }
@@ -177,6 +211,144 @@ class Grabber {
     private var videoDownloadInProgress: Bool = false
     private var audioDownloadInProgress: Bool = false
     
+    func fetchVideoMetadata(url: String) throws -> VideoMetadata {
+        guard let ytDlpPath = resolvedYTDLPPath() else { return VideoMetadata() }
+        
+        let process = Process()
+        process.executableURL = URL(filePath: ytDlpPath)
+        process.arguments = createJSON(of: url)
+        
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+        
+        try process.run()
+//        process.waitUntilExit()
+        
+        let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+        return try JSONDecoder().decode(VideoMetadata.self, from: data)
+    }
+    
+    func runProcess(arguments: [String]) async throws -> String {
+        try await withCheckedThrowingContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let ytDlpPath = resolvedYTDLPPath() else { return }
+                
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: ytDlpPath)
+                process.arguments = arguments
+                
+                let outPipe = Pipe()
+                let errPipe = Pipe()
+                process.standardOutput = outPipe
+                process.standardError = errPipe
+                
+                process.terminationHandler = { process in
+                    let output = String(
+                        data: outPipe.fileHandleForReading.readDataToEndOfFile(),
+                        encoding: .utf8
+                    ) ?? ""
+                    
+                    if process.terminationStatus == 0 {
+                        cont.resume(returning: output)
+                    } else {
+                        let errOutput = String(
+                            data: errPipe.fileHandleForReading.readDataToEndOfFile(),
+                            encoding: .utf8
+                        ) ?? "Unknown error"
+                        cont.resume(throwing: ProcessError.failed(errOutput))
+                    }
+                }
+                
+                do {
+                    try process.run()
+                }
+                catch {
+                    cont.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    private var metadata: VideoMetadata?
+    
+    func fetchMetadata(url: String) {
+        do {
+            let decoded = try fetchVideoMetadata(url: url)
+            
+            metadata = decoded
+            console.log("Set metadata.", type: .success)
+            estimatedFinalSize = Int64(decoded.filesize_approx)
+            console.log("Set estimated final size: \(estimatedFinalSize).", type: .success)
+            ext = decoded.ext
+            console.log("Set extension: \(ext).", type: .success)
+        }
+        catch {
+            console.catch(error)
+        }
+    }
+    
+    enum ProcessError: LocalizedError {
+        case failed(String)
+        var errorDescription: String? {
+            if case .failed(let string) = self { return string }
+            return nil
+        }
+    }
+    
+    func update() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            console.log("beginning update in global thread", type: .debug)
+            
+            guard let path = resolvedYTDLPPath() else { return }
+            
+            let task = Process()
+            task.executableURL = URL(filePath: path)
+            
+            task.arguments = [
+                "--ffmpeg-location", self.ffmpeg, "--update"
+            ]
+            
+            let outputPipe = Pipe()
+            let errorPipe = Pipe()
+            task.standardOutput = outputPipe
+            task.standardError = errorPipe
+            
+            outputPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if let output = String(data: data, encoding: .utf8) {
+                    output.split(separator: "\n").forEach { line in
+                        let lineStr = String(line)
+                        console.log(lineStr, type: .debug)
+                    }
+                }
+            }
+            
+            errorPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if let error = String(data: data, encoding: .utf8) {
+                    error.split(separator: "\n").forEach { line in
+                        console.log(String(line), type: .error)
+                    }
+                }
+            }
+            
+            do {
+                try task.run()
+                task.waitUntilExit()
+                
+                outputPipe.fileHandleForReading.readabilityHandler = nil
+                errorPipe.fileHandleForReading.readabilityHandler = nil
+            }
+            catch {
+                console.catch(error)
+            }
+        }
+    }
+    
+    var ffmpegStats: [String: String] = [:]
+    
     func download(url: String, filetype: FileType = .video) {
         DispatchQueue.main.async {
             self.isDownloading = true
@@ -184,18 +356,34 @@ class Grabber {
             self.status = "Preparing..."
         }
         
+        
         DispatchQueue.global(qos: .userInitiated).async {
             console.log("download initiated (in global thread)", type: .debug)
             
-            let task = Process()
-            task.executableURL = URL(filePath: self.yt_dlp)
+            self.fetchMetadata(url: url)
             
             var exporter: [String] {
                 switch filetype {
                 case .audio: return self.getAudio(of: url)
-                case .video: return self.getVideo(of: url)
+                case .video:
+                    if let ext = self.ext {
+                        console.log("Found extension (\(ext)). Based on this information, yt-dlp will \(ext == self.videoFormat.rawValue ? "remux" : "recode") the video to \(self.videoFormat.rawValue).", type: .success)
+                        return self.getVideo(of: url, ext: ext, recode: ext != self.videoFormat.rawValue)
+                    }
+                    else {
+                        console.log("No extension found.", type: .error)
+                    }
+                    return self.getVideo(of: url)
                 }
             }
+            
+            guard let ytDlpPath = resolvedYTDLPPath() else {
+                console.log("No yt-dlp path found, aborting download.", type: .error)
+                return
+            }
+            
+            let task = Process()
+            task.executableURL = URL(filePath: ytDlpPath)
             
             task.arguments = [
                 "--ffmpeg-location", self.ffmpeg,
@@ -226,7 +414,7 @@ class Grabber {
                                 
                                 self.status = "Ready to start in about \(sleep) seconds..."
                             } else {
-                                for ext in VideoFormat.allCases {
+                                for ext in VideoFormatExtension.allCases {
                                     if lineStr.hasSuffix(ext.rawValue) {
                                         self.videoDownloadInProgress = true
                                         self.audioDownloadInProgress = false
@@ -267,6 +455,20 @@ class Grabber {
                             DispatchQueue.main.async {
                                 self.status = "Encoding video..."
                                 self.startMonitoringConversion()
+                            }
+                        }
+                        
+                        if lineStr == "progress=continue" || lineStr == "progress=end" {
+                            DispatchQueue.main.async {
+                                self.status = "Encoding... time: \(self.ffmpegStats["out_time"] ?? "?") speed: \(self.ffmpegStats["speed"] ?? "?")"
+                            }
+                            self.ffmpegStats = [:]
+                        }
+                        else if lineStr.contains("=") && !lineStr.contains("[") {
+                            let parts = lineStr.split(separator: "=", maxSplits: 1).map(String.init)
+                            
+                            if parts.count == 2 {
+                                self.ffmpegStats[parts[0]] = parts[1]
                             }
                         }
                         
@@ -428,16 +630,16 @@ class Grabber {
                 
                 fileSizeDeltas.append(Double(sizeDelta))
                 
-                if fileSizeDeltas.count > 25 {
+                let uniqueDeltas = Set(fileSizeDeltas)
+                
+                if uniqueDeltas.count > 25 {
                     fileSizeDeltas.removeFirst()
                 }
                 
-                let avgDelta = fileSizeDeltas.reduce(0, +) / Double(fileSizeDeltas.count)
+                let avgDelta = uniqueDeltas.reduce(0, +) / Double(uniqueDeltas.count)
                 fileSizeGrowthRate = avgDelta
                 
-                var diff: Double {
-                    hdr ? 0.65 : 1.33333
-                }
+                var diff: Double { 2 }
                 
                 let targetSize = estimatedFinalSize > 0 ? Int64(Double(estimatedFinalSize) * diff) : fileSize * 2
                 

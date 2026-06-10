@@ -6,13 +6,18 @@ import AppKit
 struct SettingsView: View {
     @EnvironmentObject private var settings: UserSettings
     
-    @State private var grabber = Grabber()
     @State private var selectedLocation: URL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first!
+    
+    @State private var ffmpeg_progress = String()
+    @State private var ytdlp_progress = String()
+    @State private var allProgress = String()
+    
+    private let grabber = Grabber.shared
     
     var body: some View {
         VStack (alignment: .leading) {
             Picker("Preferred video format", selection: settings.$videoFormat) {
-                ForEach(VideoFormat.allCases) { format in
+                ForEach(VideoFormatExtension.allCases) { format in
                     Text(".\(format.rawValue)").tag(format)
                 }
             }
@@ -42,6 +47,45 @@ struct SettingsView: View {
             }
             Text("Current folder: \(selectedLocation.path)")
                 .foregroundStyle(.secondary)
+            
+            Divider()
+            
+            Button("Download/Update Packages") {
+                allProgress = String()
+                
+                Task.detached {
+                    try await FFmpegInstaller.install($ffmpeg_progress)
+                    try await BundleInstaller.update($ytdlp_progress)
+                    
+//                    try await BundleInstaller.download()
+                    
+                    await grabber.recheckBinaries()
+                    
+                    allProgress = "✅ All packages downloaded and up-to-date!"
+                }
+            }
+            
+            if allProgress.isEmpty {
+                Text(ffmpeg_progress)
+                    .font(.footnote)
+                    .bold()
+                    .foregroundStyle(.secondary)
+                Text(ytdlp_progress)
+                    .font(.footnote)
+                    .bold()
+                    .foregroundStyle(.secondary)
+            }
+            Text(allProgress)
+                .font(.footnote)
+                .bold()
+                .foregroundStyle(.secondary)
+            
+            
+//            Button("Download/update yt-dlp") {
+//                Task.detached {
+//                    try await BundleInstaller.download()
+//                }
+//            }
             
             Spacer()
             
