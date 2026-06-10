@@ -206,7 +206,7 @@ func resolveYtDlp() async -> Bool {
     // 2. Check for previous download from Gimme
     console.log("Checking for Gimme download...")
     let appBundled = BundleInstaller.appBinDir.appendingPathComponent("yt-dlp").path
-    if fm.fileExists(atPath: appBundled) && fm.isExecutableFile(atPath: appBundled) { console.log("Found Gimme download!"); return true }
+    if fm.fileExists(atPath: appBundled) && fm.isExecutableFile(atPath: appBundled) { console.log("Found Gimme download! \(appBundled)"); return true }
     
 //    // 3. System path / common locations
 //    console.log("Checking for any other paths...")

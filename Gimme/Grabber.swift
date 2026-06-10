@@ -353,7 +353,7 @@ class Grabber {
         DispatchQueue.main.async {
             self.isDownloading = true
             self.progress = 0.0
-            self.status = "Preparing..."
+            self.status = "Preparing (may take around 30 seconds)..."
         }
         
         
