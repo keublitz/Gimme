@@ -313,6 +313,84 @@ class Grabber {
     
     var ffmpegStats: [String: String] = [:]
     
+    let progressFileURL = FileManager.default.temporaryDirectory.appendingPathComponent("encode_progress_\(UUID().uuidString).txt")
+    
+    private func monitorFFmpegProgress(at url: URL) {
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        
+        let fd = open(url.path, O_RDONLY)
+        guard fd != -1 else {
+            console.log("fd == -1", type: .error)
+            return
+        }
+        
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd, eventMask: .write, queue: .global()
+        )
+        
+        var offset: UInt64 = 0
+        var stats: [String: String] = [:]
+        
+        source.setEventHandler {
+            let handle = FileHandle(fileDescriptor: fd)
+            try? handle.seek(toOffset: offset)
+            let newData = handle.availableData
+            offset += UInt64(newData.count)
+            
+            guard let text = String(data: newData, encoding: .utf8) else {
+                console.log("Could not create text from progress data.", type: .error)
+                return
+            }
+            
+            for line in text.components(separatedBy: "\n") {
+                let line = line.trimmingCharacters(in: .whitespaces)
+                guard !line.isEmpty else { continue }
+                
+                if line.hasPrefix("progress=") {
+                    if let outTimeStr = stats["out_time"],
+                       let currentSeconds = parseTimeToSeconds(outTimeStr),
+                       let speedStr = stats["speed"]?.replacingOccurrences(of: "x", with: "").trimmingCharacters(in: .whitespaces),
+                       let speed = Double(speedStr), speed > 0,
+                       let metadata = self.metadata {
+                        
+                        let percent = min(currentSeconds / Double(metadata.duration), 1.0)
+                        let remainingMediaSeconds = max(Double(metadata.duration) - currentSeconds, 0)
+                        let remainingRealSeconds = remainingMediaSeconds / speed
+                        
+                        let percentInt = Int(percent * 100)
+                        
+                        DispatchQueue.main.async {
+                            self.status = "Encoding... \(percentInt)% | \(remainingRealSeconds.remaining()) remaining"
+                            self.progress = percent
+                        }
+                    }
+                    
+                    // OLD
+//                    let outTime = stats["out_time"] ?? "?"
+//                    let speed = stats["speed"] ?? "?"
+//                    
+//                    DispatchQueue.main.async {
+//                        self.status = "Encoding... \(outTime) at \(speed)"
+//                    }
+                    
+                    if line == "progress=end" {
+                        source.cancel()
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                    
+                    stats = [:]
+                }
+                else if line.contains("=") {
+                    let parts = line.split(separator: "=", maxSplits: 1).map(String.init)
+                    if parts.count == 2 { stats[parts[0]] = parts[1] }
+                }
+            }
+        }
+        
+        source.setCancelHandler { close(fd) }
+        source.resume()
+    }
+    
     func download(url: String, filetype: FileType = .video) {
         DispatchQueue.main.async {
             self.isDownloading = true
@@ -351,7 +429,8 @@ class Grabber {
             
             task.arguments = [
                 "--ffmpeg-location", self.ffmpeg,
-//                "--js-runtimes", "deno:\(self.deno)"
+                "--js-runtimes", "deno:\(self.deno)",
+                "--postprocessor-args", "VideoConvertor:-progress \(self.progressFileURL.path)"
             ] + exporter
             
             let outputPipe = Pipe()
@@ -418,7 +497,8 @@ class Grabber {
                             
                             DispatchQueue.main.async {
                                 self.status = "Encoding video..."
-                                self.startMonitoringConversion()
+//                                self.startMonitoringConversion()
+                                self.monitorFFmpegProgress(at: self.progressFileURL)
                             }
                         }
                         
