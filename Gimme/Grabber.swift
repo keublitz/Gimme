@@ -52,14 +52,15 @@ class Grabber {
     
     var binaryReady: Bool = false
     
-    func recheckBinaries() async {
-        binaryReady = await resolveYtDlp()
+    func recheckBinaries() {
+        binaryReady = BinaryManager.YTDLP.binaryExists &&
+        BinaryManager.FFmpeg.binaryExists &&
+        BinaryManager.Deno.binaryExists
     }
     
     var yt_dlp: String
     var ffmpeg: String
-//    let ffprobe: String
-//    let deno: String
+    var deno: String
     
     var progress: Double = 0.0
     var status: String = ""
@@ -85,18 +86,20 @@ class Grabber {
 //    }
     
     init() {
-        guard let ytdlp = Bundle.main.path(forResource: "yt-dlp", ofType: nil),
-              let ffmpeg = Bundle.main.path(forResource: "ffmpeg", ofType: nil) else {
+        guard let ytdlp = BinaryManager.YTDLP.binaryPath,
+              let ffmpeg = BinaryManager.FFmpeg.binaryPath,
+              let deno = BinaryManager.Deno.binaryPath else {
             console.log("One or more bundles could not be found, may need to be manually installed", type: .warning)
             self.yt_dlp = String()
             self.ffmpeg = String()
+            self.deno = String()
             return
         }
         
         self.yt_dlp = ytdlp
         self.ffmpeg = ffmpeg
 //        self.ffprobe = ffprobe
-//        self.deno = deno
+        self.deno = deno
     }
     
     private var resStr: String {
@@ -212,7 +215,7 @@ class Grabber {
     private var audioDownloadInProgress: Bool = false
     
     func fetchVideoMetadata(url: String) throws -> VideoMetadata {
-        guard let ytDlpPath = resolvedYTDLPPath() else { return VideoMetadata() }
+        guard let ytDlpPath = BinaryManager.YTDLP.binaryPath else { return VideoMetadata() }
         
         let process = Process()
         process.executableURL = URL(filePath: ytDlpPath)
@@ -301,7 +304,7 @@ class Grabber {
         DispatchQueue.global(qos: .userInitiated).async {
             console.log("beginning update in global thread", type: .debug)
             
-            guard let path = resolvedYTDLPPath() else { return }
+            guard let path = BinaryManager.YTDLP.binaryPath else { return }
             
             let task = Process()
             task.executableURL = URL(filePath: path)
@@ -356,7 +359,6 @@ class Grabber {
             self.status = "Preparing (may take around 30 seconds)..."
         }
         
-        
         DispatchQueue.global(qos: .userInitiated).async {
             console.log("download initiated (in global thread)", type: .debug)
             
@@ -377,7 +379,7 @@ class Grabber {
                 }
             }
             
-            guard let ytDlpPath = resolvedYTDLPPath() else {
+            guard let ytDlpPath = BinaryManager.YTDLP.binaryPath else {
                 console.log("No yt-dlp path found, aborting download.", type: .error)
                 return
             }

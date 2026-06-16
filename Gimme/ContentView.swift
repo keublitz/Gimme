@@ -77,8 +77,9 @@ struct ContentView: View {
             if !grabber.binaryReady {
                 message = "Downloading packages..."
                 Task.detached {
-                    try await FFmpegInstaller.install($message)
-                    try await BundleInstaller.update($message)
+                    try await BinaryManager.FFmpeg.install($message)
+                    try await BinaryManager.YTDLP.install($message)
+                    try await BinaryManager.Deno.install($message)
                     
                     await grabber.recheckBinaries()
                     
