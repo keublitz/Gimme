@@ -235,47 +235,6 @@ class Grabber {
         return try JSONDecoder().decode(VideoMetadata.self, from: data)
     }
     
-    func runProcess(arguments: [String]) async throws -> String {
-        try await withCheckedThrowingContinuation { cont in
-            DispatchQueue.global(qos: .userInitiated).async {
-                guard let ytDlpPath = resolvedYTDLPPath() else { return }
-                
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: ytDlpPath)
-                process.arguments = arguments
-                
-                let outPipe = Pipe()
-                let errPipe = Pipe()
-                process.standardOutput = outPipe
-                process.standardError = errPipe
-                
-                process.terminationHandler = { process in
-                    let output = String(
-                        data: outPipe.fileHandleForReading.readDataToEndOfFile(),
-                        encoding: .utf8
-                    ) ?? ""
-                    
-                    if process.terminationStatus == 0 {
-                        cont.resume(returning: output)
-                    } else {
-                        let errOutput = String(
-                            data: errPipe.fileHandleForReading.readDataToEndOfFile(),
-                            encoding: .utf8
-                        ) ?? "Unknown error"
-                        cont.resume(throwing: ProcessError.failed(errOutput))
-                    }
-                }
-                
-                do {
-                    try process.run()
-                }
-                catch {
-                    cont.resume(throwing: error)
-                }
-            }
-        }
-    }
-    
     private var metadata: VideoMetadata?
     
     func fetchMetadata(url: String) {
