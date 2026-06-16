@@ -10,6 +10,7 @@ struct SettingsView: View {
     
     @State private var ffmpeg_progress = String()
     @State private var ytdlp_progress = String()
+    @State private var deno_progress = String()
     @State private var allProgress = String()
     
     private let grabber = Grabber.shared
@@ -54,35 +55,37 @@ struct SettingsView: View {
             
             Divider()
             
-            Button("Download/Update Packages") {
+//            Button("update deno test") {
+//                Task.detached {
+//                    try await BinaryManager.Deno.update($deno_progress)
+//                }
+//            }
+            
+            Button("Update Packages") {
                 allProgress = String()
                 
                 Task.detached {
-                    try await FFmpegInstaller.install($ffmpeg_progress)
-                    try await BundleInstaller.update($ytdlp_progress)
+                    try await BinaryManager.FFmpeg.update($ffmpeg_progress) // install only b/c no remote updater for ffmpeg
+                    try await BinaryManager.YTDLP.update($ytdlp_progress)
+                    try await BinaryManager.Deno.update($deno_progress)
                     
 //                    try await BundleInstaller.download()
                     
                     await grabber.recheckBinaries()
                     
-                    allProgress = "✅ All packages downloaded and up-to-date!"
+                    allProgress = "All packages up-to-date!"
                 }
             }
             
-            if allProgress.isEmpty {
+            Group {
                 Text(ffmpeg_progress)
-                    .font(.footnote)
-                    .bold()
-                    .foregroundStyle(.secondary)
                 Text(ytdlp_progress)
-                    .font(.footnote)
-                    .bold()
-                    .foregroundStyle(.secondary)
+                Text(deno_progress)
+                Text(allProgress)
             }
-            Text(allProgress)
-                .font(.footnote)
-                .bold()
-                .foregroundStyle(.secondary)
+            .font(.footnote)
+            .bold()
+            .foregroundStyle(.secondary)
             
             
 //            Button("Download/update yt-dlp") {
@@ -102,7 +105,7 @@ struct SettingsView: View {
                 Text("Reset to Default")
             }
         }
-        .frame(minWidth: 400, minHeight: 300, alignment: .topLeading)
+        .frame(maxWidth: 400, minHeight: 300, alignment: .topLeading)
         .padding()
     }
     
