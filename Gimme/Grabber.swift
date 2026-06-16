@@ -176,7 +176,6 @@ class Grabber {
             "-o", "~/Downloads/%(title)s.%(ext)s",
             recodeRemux, "\(videoFormat.rawValue)",
             "--newline",
-            "--postprocessor-args", "ffmpeg:-progress pipe:1",
             url
         ]
     }
