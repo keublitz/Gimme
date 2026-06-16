@@ -407,14 +407,10 @@ class Grabber {
                 switch filetype {
                 case .audio: return self.getAudio(of: url)
                 case .video:
-                    if let ext = self.ext {
-                        console.log("Found extension (\(ext)). Based on this information, yt-dlp will \(ext == self.videoFormat.rawValue ? "remux" : "recode") the video to \(self.videoFormat.rawValue).", type: .success)
-                        return self.getVideo(of: url, ext: ext, recode: ext != self.videoFormat.rawValue)
-                    }
-                    else {
-                        console.log("No extension found.", type: .error)
-                    }
-                    return self.getVideo(of: url)
+//                    let ext = self.videoFormat.rawValue
+                    
+                    console.log("Found extension (\(self.ext)). Based on this information, yt-dlp will \(self.ext == self.videoFormat.rawValue ? "remux" : "recode") the video to \(self.videoFormat.rawValue).", type: .success)
+                    return self.getVideo(of: url, ext: self.ext ?? String(), recode: self.ext != self.videoFormat.rawValue || (self.ext != "mp4" && !self.settings.preferAVC1))
                 }
             }
             
