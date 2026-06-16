@@ -18,9 +18,6 @@ A simple, safe, no-bulls**t video/audio downloader for macOS.
 
 That's it!
 
-### Notice for developers regarding 0.1.0:
-> This branch is currently non-functional without ```yt-dlp``` and ```ffmpeg``` binaries placed in a folder path ```~/Gimme/Binaries```. This will be fixed in a later version.
-
 ## Settings/supported formats
 
 * Enable HDR downloads. SDR only by default.
