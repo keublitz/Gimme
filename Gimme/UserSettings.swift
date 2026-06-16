@@ -12,6 +12,7 @@ class UserSettings: ObservableObject {
     @AppStorage("videoFormat") var videoFormat: VideoFormatExtension = .mp4
     @AppStorage("audioFormat") var audioFormat: AudioFormat = .mp3
     @AppStorage("hdr") var hdr: Bool = false
+    @AppStorage("preferAVC1") var preferAVC1: Bool = true
     
     private init() {}
 }

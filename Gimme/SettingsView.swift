@@ -22,6 +22,10 @@ struct SettingsView: View {
                 }
             }
             
+            Toggle("Prefer AVC1 for MP4", isOn: settings.$preferAVC1)
+            Text("When selected, Gimme will prioritize AVC1 formats when downloading MP4s to prevent unnecessary re-encoding. If you're unsure what this means, leave it on.")
+                .font(.caption)
+            
             Picker("Maximum resolution", selection: settings.$resolution) {
                 Text("2140p").tag(Resolution.uhd4k)
                 Text("1440p").tag(Resolution.uhd)

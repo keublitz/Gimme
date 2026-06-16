@@ -128,7 +128,7 @@ class Grabber {
         var inst: [String] = []
         
         var avc1EncodingIfNeeded: String {
-            if let ext, ext == "mp4" {
+            if let ext, ext == "mp4", settings.preferAVC1 {
                 return bestAVC1Encoding
             }
             else {
@@ -165,11 +165,11 @@ class Grabber {
             }
         }
         
-        let bestAnyEncodingWithHDRpreference = "bv*[height<=\(resStr)]\(hdrStr)+ba/"
+        let bestAnyEncodingWithHDRPreference = "bv*[height<=\(resStr)]\(hdrStr)+ba/"
         let bestAnyEncodingAnyHDR = "bv*[height<=\(resStr)]+ba/"
         let best = "bv*+ba/b"
         
-        let fallback = bestAnyEncodingWithHDRpreference + bestAnyEncodingAnyHDR + best
+        let fallback = bestAnyEncodingWithHDRPreference + bestAnyEncodingAnyHDR + best
         
         return [
             "-f", encodeInstructions(defaultTo: fallback, ext: ext),
