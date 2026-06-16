@@ -48,6 +48,12 @@ struct ContentView: View {
                 loadingBar
             }
             
+            if grabber.isDownloading {
+                Button("Cancel download") {
+                    grabber.cancel()
+                }
+            }
+            
 //            Text(ffmpegInstallStatus)
 //                .font(.footnote)
 //            Text(ytdlpInstallStatus)
