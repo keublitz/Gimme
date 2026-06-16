@@ -89,10 +89,12 @@ struct ContentView: View {
                     
                     await grabber.recheckBinaries()
                     
-                    if !grabber.binaryReady {
-                        message = "❌ An error occurred downloading packages. Click \"Download/Update Packages\" in Settings to try again."
-                    } else {
-                        message = "✅ Ready!"
+                    DispatchQueue.main.async {
+                        if !grabber.binaryReady {
+                            message = "❌ An error occurred downloading packages. Click \"Download/Update Packages\" in Settings to try again."
+                        } else {
+                            message = "✅ Ready!"
+                        }
                     }
                 }
             }
