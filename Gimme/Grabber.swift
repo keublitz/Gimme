@@ -79,6 +79,8 @@ class Grabber {
     private var estimatedFinalSize: Int64 = 0
     private var ext: String?
     
+    private var currentTask: Process?
+    
 //    private func find_ffmpeg() -> String ? {
 //        let possiblePaths = [
 //            "/usr/local/bin/ffmpeg"
@@ -386,6 +388,7 @@ class Grabber {
             
             let task = Process()
             task.executableURL = URL(filePath: ytDlpPath)
+            self.currentTask = task
             
             task.arguments = [
                 "--ffmpeg-location", self.ffmpeg,
@@ -686,6 +689,32 @@ class Grabber {
             }
             
             lastFileSize = fileSize
+        }
+    }
+    
+    func cancel() {
+        currentTask?.terminate()
+        currentTask = nil
+        
+        if let path = outputFilePath {
+            let expanded = (path as NSString).expandingTildeInPath
+            try? FileManager.default.removeItem(atPath: expanded)
+            try? FileManager.default.removeItem(atPath: expanded + ".part")
+        }
+        
+        DispatchQueue.main.async {
+            self.isDownloading = false
+            self.destinationsTouched = 0
+            self.progress = 0
+            self.status = "Cancelled."
+            self.invalidateTimer()
+            self.estimatedFinalSize = 0
+            self.lastFileSize = 0
+            self.fileSizeGrowthRate = 0
+            self.fileSizeDeltas = []
+            self.outputFilePath = nil
+            self.videoDownloadInProgress = false
+            self.audioDownloadInProgress = false
         }
     }
 }
