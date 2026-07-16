@@ -7,3 +7,4 @@ deno
 xcuserdata/
 *.xcuserdatad
 DerivedData/
+API Secrets.swift
